@@ -1,0 +1,10 @@
+int main() {
+    // Inicializáljuk a véletlenszám-generátort, 
+    // hogy ne mindig ugyanoda kerüljenek az aknák
+    srand(static_cast<unsigned int>(time(NULL))); 
+
+    // Elindítjuk a játékot
+    jatek_inditasa();
+
+    return 0;
+}
