@@ -1,0 +1,263 @@
+Örömmel segítek átalakítani az aknakeresőt a **Kincskereső játék** követelményeire! Mivel a feladat plusz pontokat ad a **külön source/header fájlokért**, a **struktúráért**, a **fájlba mentésért** és a **hibakezelésért**, ezért a kódot pontosan ezek mentén fogjuk felépíteni.
+
+A pontozási szabályokat frissítettem a kért értékekre (kezdőpont: 10, kincs: +5, üres: -1, csapda: -3), és hozzáadtam a fájlba mentés funkciót is a játék végén.
+
+Így fog kinézni a 3 külön fájlból álló struktúrád:
+
+---
+
+### 1. `kincs_functions.h` (A Header fájl)
+
+Itt deklaráljuk a struktúrát és a függvények prototípusait.
+
+```cpp
+#ifndef KINCS_FUNCTIONS_H
+#define KINCS_FUNCTIONS_H
+
+#include <iostream>
+#include <fstream>
+
+// Mezők állapotai a pályán
+enum MezoAllapot {
+    URES = 0,
+    KINCS = 1,
+    CSAPDA = 2,
+    FELFEDEZETT_URES = 3,
+    FELFEDEZETT_KINCS = 4,
+    FELFEDEZETT_CSAPDA = 5
+};
+
+struct KincsJatek {
+    int** palya;         // 2D dinamikus tömb
+    int meret;           // Pálya mérete (NxN)
+    int pontszam;        // Aktuális pontszám (Kezdő: 10)
+    int osszes_kincs;    // Generált kincsek száma
+    int megtalalt_kincs; // Megtalált kincsek száma
+};
+
+// Játékkezelő függvények deklarációja
+void jatek_inditasa();
+void palya_felszabadit(KincsJatek& jatek);
+void eredmeny_mentese(const KincsJatek& jatek, bool nyert);
+
+#endif // KINCS_FUNCTIONS_H
+
+```
+
+---
+
+### 2. `kincs_functions.cpp` (A Logika)
+
+Itt valósítjuk meg a játékmenetet, a dinamikus memóriakezelést, a hibakezelést és a fájlba írást.
+
+```cpp
+#define _CRT_SECURE_NO_WARNINGS
+#include "kincs_functions.h"
+#include <cstdlib>
+#include <ctime>
+#include <iomanip>
+
+using namespace std;
+
+// Dinamikus memória felszabadítása (Futásidejű biztonságért)
+void palya_felszabadit(KincsJatek& jatek) {
+    if (jatek.palya) {
+        for (int i = 0; i < jatek.meret; i++) {
+            delete[] jatek.palya[i];
+        }
+        delete[] jatek.palya;
+        jatek.palya = nullptr;
+    }
+}
+
+// Plusz pont: Fájlba mentés funkció
+void eredmeny_mentese(const KincsJatek& jatek, bool nyert) {
+    ofstream fajl("jatek_eredmeny.txt", ios::app); // Hozzáfűzés módban nyitjuk meg
+    if (!fajl) {
+        cerr << "Hiba: Nem sikerult megnyitni a fajlt menteshez!\n";
+        return;
+    }
+
+    time_t most = time(0);
+    char* idopont = ctime(&most);
+
+    fajl << "--- Jatek Eredmeny --- " << idopont;
+    fajl << "Palya meret: " << jatek.meret << "x" << jatek.meret << "\n";
+    fajl << "Vegeredmeny: " << (nyert ? "GYOZELEM" : "VERESEG") << "\n";
+    fajl << "Vegso pontszam: " << jatek.pontszam << "\n";
+    fajl << "Kincsek: " << jatek.megtalalt_kincs << "/" << jatek.osszes_kincs << "\n";
+    fajl << "----------------------\n\n";
+
+    fajl.close();
+    cout << "[INFO] Az eredmeny sikeresen mentve a 'jatek_eredmeny.txt' fajlba!\n";
+}
+
+void jatek_inditasa() {
+    KincsJatek jatek;
+    jatek.pontszam = 10; // Szabály: kezdőpontszám 10
+    jatek.megtalalt_kincs = 0;
+    jatek.palya = nullptr;
+
+    cout << "=== 2. Feladat: Interaktiv Kincskereso Jatek ===\n";
+    cout << "Adja meg a palya meretet (pl. 6 eseten 6x6 lesz): ";
+
+    // Futásidejű hibakezelés: Csak pozitív egész számot fogadunk el
+    if (!(cin >> jatek.meret) || jatek.meret <= 1) {
+        cerr << "Hiba: Ervenytelen palyameret! (Minimum 2x2-es palya szukseges)\n";
+        cin.clear();
+        cin.ignore(10000, '\n');
+        return;
+    }
+
+    // 2D Dinamikus tömb foglalása hibakezeléssel
+    try {
+        jatek.palya = new int* [jatek.meret];
+        for (int i = 0; i < jatek.meret; i++) {
+            jatek.palya[i] = new int[jatek.meret] { URES }; // Minden mező alapból ÜRES (0)
+        }
+    } catch (bad_alloc&) {
+        cerr << "Kritikus hiba: Nincs elegendo memoria a palya letrehozasahoz!\n";
+        palya_felszabadit(jatek);
+        return;
+    }
+
+    // Kincsek és Csapdák generálása a pálya mérete alapján
+    jatek.osszes_kincs = jatek.meret; // N darab kincs
+    int csapdak_szama = jatek.meret;   // N darab csapda
+
+    // Kincsek lehelyezése
+    int lehelyezett_kincs = 0;
+    while (lehelyezett_kincs < jatek.osszes_kincs) {
+        int r = rand() % jatek.meret;
+        int c = rand() % jatek.meret;
+        if (jatek.palya[r][c] == URES) {
+            jatek.palya[r][c] = KINCS;
+            lehelyezett_kincs++;
+        }
+    }
+
+    // Csapdák lehelyezése
+    int lehelyezett_csapda = 0;
+    while (lehelyezett_csapda < csapdak_szama) {
+        int r = rand() % jatek.meret;
+        int c = rand() % jatek.meret;
+        if (jatek.palya[r][c] == URES) {
+            jatek.palya[r][c] = CSAPDA;
+            lehelyezett_csapda++;
+        }
+    }
+
+    cout << "A palya elkeszult. Kincsek: " << jatek.osszes_kincs << ", Csapdak is elrejtve. Sok sikert!\n\n";
+
+    // Fő játékmenet ciklus
+    while (jatek.pontszam > 0 && jatek.megtalalt_kincs < jatek.osszes_kincs) {
+        cout << "Pontszamod: " << jatek.pontszam << " | Kincsek: " << jatek.megtalalt_kincs << "/" << jatek.osszes_kincs << "\n   ";
+
+        // Oszlopok indexeinek kirajzolása
+        for (int j = 0; j < jatek.meret; j++) cout << j << " ";
+        cout << "\n";
+
+        // Pálya kirajzolása (csak a már felfedezett mezőket mutatjuk!)
+        for (int i = 0; i < jatek.meret; i++) {
+            cout << i << " |";
+            for (int j = 0; j < jatek.meret; j++) {
+                if (jatek.palya[i][j] == FELFEDEZETT_KINCS) cout << "K ";
+                else if (jatek.palya[i][j] == FELFEDEZETT_CSAPDA) cout << "T "; // T mint Trap / Csapda
+                else if (jatek.palya[i][j] == FELFEDEZETT_URES) cout << "o ";
+                else cout << ". "; // Felfedezetlen mező
+            }
+            cout << "\n";
+        }
+
+        int tipp_sor, tipp_oszlop;
+        cout << "\nAdja meg a koordinatakat (sor es oszlop szokozzel, pl: 0 3): ";
+
+        // Futásidejű hibakezelés: nem szám karakterek kezelése
+        if (!(cin >> tipp_sor >> tipp_oszlop)) {
+            cerr << "Hiba: Kerlek szamokat adj meg! Probalja ujra.\n";
+            cin.clear(); 
+            cin.ignore(10000, '\n');
+            continue;
+        }
+
+        // Futásidejű hibakezelés: indexhatárok ellenőrzése
+        if (tipp_sor < 0 || tipp_sor >= jatek.meret || tipp_oszlop < 0 || tipp_oszlop >= jatek.meret) {
+            cout << "Hiba: A koordinata a palyan kivulre esik (0 es " << jatek.meret - 1 << " kozott adj meg)!\n\n";
+            continue;
+        }
+
+        // Kiválasztott mező kiértékelése
+        int mezo = jatek.palya[tipp_sor][tipp_oszlop];
+
+        if (mezo == KINCS) {
+            cout << "-> CSODAS! Kincset talaltal! (+5 pont)\n\n";
+            jatek.pontszam += 5;
+            jatek.megtalalt_kincs++;
+            jatek.palya[tipp_sor][tipp_oszlop] = FELFEDEZETT_KINCS;
+        }
+        else if (mezo == CSAPDA) {
+            cout << "-> JHAJJ! Csapdaba leptel! (-3 pont)\n\n";
+            jatek.pontszam -= 3;
+            jatek.palya[tipp_sor][tipp_oszlop] = FELFEDEZETT_CSAPDA;
+        }
+        else if (mezo == URES) {
+            cout << "-> Mellé! Ez a mezo ures. (-1 pont)\n\n";
+            jatek.pontszam -= 1;
+            jatek.palya[tipp_sor][tipp_oszlop] = FELFEDEZETT_URES;
+        }
+        else {
+            cout << "-> Ezt a mezot mar korabban felfedezted.\n\n";
+        }
+    }
+
+    // Játék vége értékelés
+    bool nyert = (jatek.megtalalt_kincs == jatek.osszes_kincs);
+    if (nyert) {
+        cout << "=== GRATULALOK, MINDEN KINCSET MEGTALALTAL! Vegso pontszamod: " << jatek.pontszam << " ===\n";
+    }
+    else {
+        cout << "=== JATEK VEGE! Elfogytak a pontjaid. Vegso pontszamod: " << jatek.pontszam << " ===\n";
+    }
+
+    // Eredmény mentése fájlba és memória felszabadítás
+    eredmeny_mentese(jatek, nyert);
+    palya_felszabadit(jatek);
+}
+
+```
+
+---
+
+### 3. `main.cpp` (A belépési pont)
+
+Ez a fájl felelős az indításért és a randomizációért. Ez fogja megoldani az előzőleg látott `unresolved external symbol main` hibádat is.
+
+```cpp
+#include "kincs_functions.h"
+#include <cstdlib>
+#include <ctime>
+
+int main() {
+    // Véletlenszám-generátor inicializálása idő alapján
+    srand(static_cast<unsigned int>(time(NULL)));
+
+    // Játék indítása
+    jatek_inditasa();
+
+    return 0;
+}
+
+```
+
+---
+
+### Mitől lett ez a kód biztosan max pontos (10p + Pluszpontok)?
+
+1. **Külön fájlok (+2p):** A kód logikusan szét lett szedve `.h`, `functions.cpp` és `main.cpp` fájlokra.
+2. **Struktúra (+2p):** A `KincsJatek` struct fogja össze az összes játékállapotot (dinamikus pálya mutató, méret, pontok, kincsek száma).
+3. **Fájlba mentés (+1p):** Az `eredmeny_mentese()` függvény a standard `<fstream>` könyvtár segítségével elmenti a játék kimenetelét egy `jatek_eredmeny.txt` szöveges fájlba a pontos időbélyegzővel együtt.
+4. **Futásidejű hibakezelés (+0.25p/rész):**
+* Kezeli, ha a felhasználó méretnek vagy koordinátának nem számot (pl. betűt) ad meg (`cin.clear()`, `cin.ignore()`).
+* Kezeli a túl kicsi pályaméretet.
+* Ellenőrzi, hogy a megadott koordináta a tömb indexhatárain belül van-e.
+* Be van építve egy `try-catch` blokk a dinamikus memóriafoglalás esetleges hibáira (`bad_alloc`).
